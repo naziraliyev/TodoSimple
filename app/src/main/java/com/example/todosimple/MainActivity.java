@@ -26,6 +26,7 @@ public class MainActivity extends AppCompatActivity {
     private EditText taskedit;
     List<ToDoModel> toDoModelList;
     List<String> list;
+    DatabaseReference myRef;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -110,11 +111,31 @@ public class MainActivity extends AppCompatActivity {
 
     public void AddTask(View view) {
         FirebaseDatabase database = FirebaseDatabase.getInstance();
-        DatabaseReference myRef = database.getReference("Tasks");
+        myRef = database.getReference("Tasks");
         String ts = taskedit.getText().toString();
         myRef.setValue(ts);
-        AdapterHelper adapterHelper = new AdapterHelper.TaskAdapter(toDoModelList,list);
+        readData();
+       // AdapterHelper adapterHelper = new AdapterHelper.TaskAdapter(toDoModelList,list);
 //        insertedToFirebase();
 //        loadedFromFirebase();
+    }
+
+    private void readData() {
+        ValueEventListener postListener = new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot dataSnapshot) {
+                // Get Post object and use the values to update the UI
+                ToDoModel post = dataSnapshot.getValue(ToDoModel.class);
+                toDoModelList.add(post);
+                Toast.makeText(MainActivity.this, "Data is loaded", Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
+            public void onCancelled(DatabaseError databaseError) {
+                // Getting Post failed, log a message
+                Log.w(TAG, "loadPost:onCancelled", databaseError.toException());
+            }
+        };
+        myRef.addValueEventListener(postListener);
     }
 }
