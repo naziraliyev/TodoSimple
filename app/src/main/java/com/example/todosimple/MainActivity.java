@@ -1,50 +1,45 @@
 package com.example.todosimple;
 
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.media.Ringtone;
+import android.media.RingtoneManager;
+import android.net.Uri;
+import android.os.Bundle;
+import android.util.Log;
+import android.view.View;
+import android.widget.EditText;
+import android.widget.Toast;
+
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import android.app.Notification;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
-import android.content.Intent;
-import android.media.Ringtone;
-import android.media.RingtoneManager;
-import android.net.Uri;
-import android.os.Bundle;
-import android.text.TextUtils;
-import android.view.View;
-import android.widget.EditText;
-import android.widget.Toast;
-
-import com.google.android.gms.tasks.OnCompleteListener;
-import com.google.android.gms.tasks.Task;
-import com.google.firebase.FirebaseOptions;
+import com.google.android.gms.tasks.OnFailureListener;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 
+import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
-import java.util.Collections;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
+import java.util.TimeZone;
 
 public class MainActivity extends AppCompatActivity {
     private RecyclerView recyclerView;
     private EditText taskedit;
     private AdapterHelper adapterHelper;
-    private DatabaseReference myRef;
-    private FirebaseDatabase mFirebaseInstance;
-    private Calendar calander;
-    private SimpleDateFormat simpleDateFormat;
-    private List<ToDoModel> toDoModelList = new ArrayList<>();
-
+    private List<ToDoModel> list = new ArrayList<>();
+    DatabaseReference mDbRef;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,14 +49,22 @@ public class MainActivity extends AppCompatActivity {
         recyclerView = findViewById(R.id.recyclerView_task);
         recyclerView.setHasFixedSize(true);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        list = new ArrayList<>();
+
+        getPrefs();
+//        if (list.size() != 0) {
+//            loadedData();
+//        } else {
+//            Toast.makeText(this, "Can not find Any data", Toast.LENGTH_SHORT).show();
+//        }
+
+    }
 
 
+    private void getPrefs() {
+        SharedPreferences dateprefs = getSharedPreferences("myPrefs", MODE_PRIVATE);
+        dateprefs.contains("date");
 
-        if (toDoModelList.size()>0){
-        loadedData(taskedit.getText().toString());
-        }else {
-            Toast.makeText(this, "Can not find Any data", Toast.LENGTH_SHORT).show();
-        }
     }
 
     private void showNotification() {
@@ -104,81 +107,55 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void AddTask(View view) {
-
-        calander = Calendar.getInstance();
-        simpleDateFormat = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss");
-        String currentTime = simpleDateFormat.format(calander.getTime());
-
         String task = taskedit.getText().toString();
-        if (!task.equals("")) {
-            writeDataToFirebase(task, currentTime);
-            loadedData(task);
-        } else {
-            Toast.makeText(this, "Please write to task place", Toast.LENGTH_SHORT).show();
-        }
+//        Date currentTime = Calendar.getInstance().getTime();
+        Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("GMT+5:00"));
+        Date currentLocalTime = cal.getTime();
+        DateFormat date = new SimpleDateFormat("HH:mm a");
+// you can get seconds by adding  "...:ss" to it
+        date.setTimeZone(TimeZone.getTimeZone("GMT+5:00"));
 
+        String localTime = date.format(currentLocalTime);
+        ToDoModel model = new ToDoModel(task,localTime.toString());
+        FirebaseDatabase mDatabase = FirebaseDatabase.getInstance();
+         mDbRef = mDatabase.getReference("Task/Name");
+        mDbRef.setValue(model).addOnFailureListener(new OnFailureListener() {
+            @Override
+            public void onFailure(@NonNull Exception e) {
+                Log.d("TAG", e.getLocalizedMessage());
+            }
+        });
+loadedData();
 
     }
 
-    private void loadedData(String task) {
-        Toast.makeText(this, "Data is loading ", Toast.LENGTH_LONG).show();
-        final DatabaseReference nm= FirebaseDatabase.getInstance().getReference().child("Tasks").child(task);
-        nm.addListenerForSingleValueEvent(new ValueEventListener() {
+    private void loadedData() {
+        mDbRef.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot dataSnapshot) {
 
-                if (dataSnapshot.exists()){
-
-                    for (DataSnapshot npsnapshot : dataSnapshot.getChildren()){
-                        ToDoModel l=npsnapshot.getValue(ToDoModel.class);
-                        toDoModelList.add(l);
-                        Toast.makeText(MainActivity.this, "successfully loaded", Toast.LENGTH_SHORT).show();
-                    }
-                    adapterHelper=new AdapterHelper(MainActivity.this,toDoModelList);
-                    recyclerView.setAdapter(adapterHelper);
-
-                }else {
-                    Toast.makeText(MainActivity.this, "Data is not exist", Toast.LENGTH_SHORT).show();
-                }
-
+                ToDoModel model = dataSnapshot.getValue(ToDoModel.class);
+                list.add(model);
+                adapterHelper = new AdapterHelper(MainActivity.this,list);
+                recyclerView.setAdapter(adapterHelper);
+                Log.d("TAG", "Value is: " + model);
             }
 
             @Override
-            public void onCancelled(DatabaseError databaseError) {
-
+            public void onCancelled(DatabaseError error) {
+// Failed to read value
+                Log.w("TAG", "Failed to read value.", error.toException());
             }
         });
+
     }
 
 
-    private void writeDataToFirebase(String task, String currentTime) {
-
-        myRef = FirebaseDatabase.getInstance().getReference();
-        myRef.addValueEventListener(new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                if (!snapshot.child("Tasks").child(task).exists()) {
-                  HashMap<String,String> myMap = new HashMap<>();
-                  myMap.put("task",task);
-                  myMap.put("time",currentTime);
-                  myRef.child("Task").child(task).setValue(myMap).addOnCompleteListener(new OnCompleteListener<Void>() {
-                      @Override
-                      public void onComplete(@NonNull Task<Void> task) {
-                          Toast.makeText(MainActivity.this, "Success "+task, Toast.LENGTH_SHORT).show();
-                      }
-                  });
-
-
-                } else {
-                    Toast.makeText(MainActivity.this, "Your data is already exist ...", Toast.LENGTH_SHORT).show();
-                }
-            }
-
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {
-
-            }
-        });
+    private void setprefs(String dateSharedPrefs) {
+        SharedPreferences preferences = getSharedPreferences("myPrefs", MODE_PRIVATE);
+        SharedPreferences.Editor editor = preferences.edit();
+        editor.putString("date", dateSharedPrefs);
+        editor.apply();
     }
 
 
